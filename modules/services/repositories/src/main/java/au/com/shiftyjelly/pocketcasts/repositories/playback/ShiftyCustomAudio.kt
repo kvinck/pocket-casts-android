@@ -20,6 +20,8 @@ class ShiftyCustomAudio(
     }
 
     fun setupVolumeBoost(audioSessionId: Int) {
+        release()
+
         try {
             enhancer = LoudnessEnhancer(audioSessionId).apply {
                 setTargetGain(LOUDNESS_TARGET_GAIN)
@@ -52,6 +54,22 @@ class ShiftyCustomAudio(
                 Timber.e(e, "Failed to create equalizer")
             }
         }
+    }
+
+    fun release() {
+        try {
+            enhancer?.release()
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to release loudness enhancer")
+        }
+        enhancer = null
+
+        try {
+            equalizer?.release()
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to release equalizer")
+        }
+        equalizer = null
     }
 
     fun addSilenceSkippedTime(timeUs: Long) {

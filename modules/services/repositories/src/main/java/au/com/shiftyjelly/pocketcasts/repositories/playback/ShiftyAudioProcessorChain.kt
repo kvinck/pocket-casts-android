@@ -12,7 +12,10 @@ import kotlin.time.Duration.Companion.microseconds
 import timber.log.Timber
 
 @OptIn(UnstableApi::class)
-class ShiftyAudioProcessorChain(private val customAudio: ShiftyCustomAudio) : AudioProcessorChain {
+class ShiftyAudioProcessorChain(
+    private val customAudio: ShiftyCustomAudio,
+    private val useNativeVocalBoost: Boolean,
+) : AudioProcessorChain {
     private val lowProcessor = ShiftyTrimSilenceProcessor(
         416000.microseconds,
         291000.microseconds,
@@ -33,8 +36,17 @@ class ShiftyAudioProcessorChain(private val customAudio: ShiftyCustomAudio) : Au
         ::onSkippedFrames,
     )
     private val sonicAudioProcessor = SonicAudioProcessor()
+    private val vocalBoostProcessor = VocalBoostAudioProcessor(
+        isEngineAvailable = { useNativeVocalBoost && NativeVocalBoostEngine.isLibraryLoaded },
+    )
 
-    private val audioProcessors = arrayOf(lowProcessor, mediumProcessor, highProcessor, sonicAudioProcessor)
+    private val audioProcessors = arrayOf(
+        lowProcessor,
+        mediumProcessor,
+        highProcessor,
+        sonicAudioProcessor,
+        vocalBoostProcessor,
+    )
     private var trimMode = TrimMode.OFF
     override fun getAudioProcessors(): Array<AudioProcessor> {
         return audioProcessors
@@ -69,6 +81,14 @@ class ShiftyAudioProcessorChain(private val customAudio: ShiftyCustomAudio) : Au
 
     fun applyTrimModeForNextUpdate(trimMode: TrimMode) {
         this.trimMode = trimMode
+    }
+
+    fun setBoostVolume(boostVolume: Boolean) {
+        vocalBoostProcessor.boostEnabled = boostVolume
+    }
+
+    fun usesNativeVocalBoost(): Boolean {
+        return useNativeVocalBoost && NativeVocalBoostEngine.isLibraryLoaded
     }
 
     private fun onSkippedFrames(duration: Duration) {

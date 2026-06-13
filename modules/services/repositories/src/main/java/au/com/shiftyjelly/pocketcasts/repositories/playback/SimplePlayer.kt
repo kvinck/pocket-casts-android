@@ -116,6 +116,8 @@ class SimplePlayer(
         } catch (e: Exception) {
             LogBuffer.e(LogBuffer.TAG_PLAYBACK, e, "Play failed to release.")
         }
+        renderersFactory?.release()
+        renderersFactory = null
 
         player = null
         prepared = false
@@ -216,6 +218,7 @@ class SimplePlayer(
         player.addAnalyticsListener(renderer)
 
         handleStop()
+        this.renderersFactory = renderer
         this.player = player
 
         setPlayerEffects()

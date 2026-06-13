@@ -13,6 +13,8 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import au.com.shiftyjelly.pocketcasts.models.type.TrimMode
 import au.com.shiftyjelly.pocketcasts.repositories.user.StatsManager
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
+import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
 
 /**
  * An [AudioProcessor] that skips silence in the input stream. Input and output are 16-bit
@@ -30,6 +32,8 @@ class ShiftyRenderersFactory(
     private var audioSink: AudioSink? = null
     private var processorChain: ShiftyAudioProcessorChain? = null
     private val customAudio = ShiftyCustomAudio(statsManager)
+    private val useNativeVocalBoost = FeatureFlag.isEnabled(Feature.IMPROVED_VOLUME_BOOST, immutable = true) &&
+        NativeVocalBoostEngine.isLibraryLoaded
 
     fun setRemoveSilence(trimMode: TrimMode) {
         processorChain?.applyTrimModeForNextUpdate(trimMode)
@@ -38,7 +42,8 @@ class ShiftyRenderersFactory(
 
     fun setBoostVolume(boostVolume: Boolean) {
         this.boostVolume = boostVolume
-        internalRenderer?.customAudio?.setBoostVolume(boostVolume)
+        processorChain?.setBoostVolume(boostVolume)
+        internalRenderer?.customAudio?.setBoostVolume(boostVolume && !isNativeVocalBoostAvailable())
     }
 
     fun setPlaybackSpeed(playbackSpeed: Float) {
@@ -46,8 +51,14 @@ class ShiftyRenderersFactory(
         internalRenderer?.customAudio?.playbackSpeed = playbackSpeed
     }
 
-    override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioOutputPlaybackParameters: Boolean): AudioSink {
-        processorChain = ShiftyAudioProcessorChain(customAudio)
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioOutputPlaybackParameters: Boolean,
+    ): AudioSink {
+        processorChain = ShiftyAudioProcessorChain(customAudio, useNativeVocalBoost).apply {
+            setBoostVolume(boostVolume)
+        }
         return DefaultAudioSink.Builder(context)
             .setAudioProcessorChain(processorChain!!)
             .setEnableFloatOutput(enableFloatOutput)
@@ -74,13 +85,23 @@ class ShiftyRenderersFactory(
             eventListener,
             audioSink,
         ).apply {
-            customAudio.setBoostVolume(boostVolume)
+            customAudio.setBoostVolume(boostVolume && !isNativeVocalBoostAvailable())
             customAudio.playbackSpeed = playbackSpeed
             out.add(this)
         }
     }
 
     override fun onAudioSessionIdChanged(eventTime: AnalyticsListener.EventTime, audioSessionId: Int) {
-        customAudio.setupVolumeBoost(audioSessionId)
+        if (!isNativeVocalBoostAvailable()) {
+            customAudio.setupVolumeBoost(audioSessionId)
+        }
+    }
+
+    fun release() {
+        customAudio.release()
+    }
+
+    private fun isNativeVocalBoostAvailable(): Boolean {
+        return processorChain?.usesNativeVocalBoost() ?: useNativeVocalBoost
     }
 }

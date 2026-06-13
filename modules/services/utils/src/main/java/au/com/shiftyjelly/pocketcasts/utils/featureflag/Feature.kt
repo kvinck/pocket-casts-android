@@ -369,6 +369,15 @@ enum class Feature(
         hasDevToggle = true,
         addedOn = LocalDate.parse("2026-06-09"),
     ),
+    IMPROVED_VOLUME_BOOST(
+        key = "improved_volume_boost",
+        title = "Improved Volume Boost",
+        defaultValue = isDebugOrPrototypeBuild,
+        tier = FeatureTier.Free,
+        hasFirebaseRemoteFlag = true,
+        hasDevToggle = true,
+        addedOn = LocalDate.parse("2026-06-13"),
+    ),
 }
 
 sealed class FeatureTier {
