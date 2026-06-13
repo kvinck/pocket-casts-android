@@ -150,8 +150,24 @@
                 android:text="@string/player_effects_trim_silence"
                 android:textColor="?attr/player_contrast_01"
                 app:layout_constraintLeft_toLeftOf="@id/speedLabel"
-                app:layout_constraintRight_toLeftOf="@id/switchTrim"
+                app:layout_constraintRight_toLeftOf="@id/trimSpeedLabel"
                 app:layout_constraintTop_toTopOf="@id/iconTrim" />
+
+            <TextView
+                android:id="@+id/trimSpeedLabel"
+                style="@style/DarkSubtitle2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/background_speed_label"
+                android:paddingStart="8dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="3dp"
+                android:textColor="?attr/player_contrast_01"
+                app:layout_constraintBottom_toBottomOf="@id/trimSilenceLabel"
+                app:layout_constraintRight_toLeftOf="@id/switchTrim"
+                app:layout_constraintTop_toTopOf="@id/trimSilenceLabel"
+                tools:text="1.03x" />
 
             <com.google.android.material.button.MaterialButtonToggleGroup
                 android:id="@+id/trimToggleGroup"
@@ -246,8 +262,24 @@
                 android:text="@string/player_effects_volume_boost"
                 android:textColor="?attr/player_contrast_01"
                 app:layout_constraintLeft_toLeftOf="@id/speedLabel"
-                app:layout_constraintRight_toLeftOf="@id/switchTrim"
+                app:layout_constraintRight_toLeftOf="@id/volumeBoostGainLabel"
                 app:layout_constraintTop_toTopOf="@id/iconVolume" />
+
+            <TextView
+                android:id="@+id/volumeBoostGainLabel"
+                style="@style/DarkSubtitle2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/background_speed_label"
+                android:paddingStart="8dp"
+                android:paddingTop="3dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="3dp"
+                android:textColor="?attr/player_contrast_01"
+                app:layout_constraintBottom_toBottomOf="@id/volumeLabel"
+                app:layout_constraintRight_toLeftOf="@id/switchVolume"
+                app:layout_constraintTop_toTopOf="@id/volumeLabel"
+                tools:text="+4 dB" />
 
             <TextView
                 android:id="@+id/detailVolumeLabel"

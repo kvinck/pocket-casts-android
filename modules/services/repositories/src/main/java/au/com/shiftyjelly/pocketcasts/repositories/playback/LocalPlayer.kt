@@ -190,4 +190,6 @@ abstract class LocalPlayer(override val onPlayerEvent: (Player, PlayerEvent) -> 
     }
 
     override suspend fun setPlaybackEffects(playbackEffects: PlaybackEffects) {}
+
+    override fun playbackEffectsMetrics(): PlaybackEffectsMetrics = PlaybackEffectsMetrics()
 }

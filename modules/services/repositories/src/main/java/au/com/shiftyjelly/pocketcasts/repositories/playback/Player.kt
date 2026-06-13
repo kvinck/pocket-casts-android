@@ -50,6 +50,7 @@ interface Player {
     suspend fun durationMs(): Int?
     suspend fun bufferedUpToMs(): Int
     suspend fun bufferedPercentage(): Int
+    fun playbackEffectsMetrics(): PlaybackEffectsMetrics
     fun supportsTrimSilence(): Boolean
     fun supportsVolumeBoost(): Boolean
     fun supportsVideo(): Boolean

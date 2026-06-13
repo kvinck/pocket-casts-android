@@ -177,6 +177,10 @@ class CastPlayer(
         return false
     }
 
+    override fun playbackEffectsMetrics(): PlaybackEffectsMetrics = PlaybackEffectsMetrics(
+        effectivePlaybackSpeed = calcPlaybackSpeed(),
+    )
+
     override fun supportsVolumeBoost(): Boolean {
         return false
     }

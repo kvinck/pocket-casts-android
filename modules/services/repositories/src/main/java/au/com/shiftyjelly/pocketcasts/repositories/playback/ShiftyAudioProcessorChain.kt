@@ -15,39 +15,69 @@ import timber.log.Timber
 class ShiftyAudioProcessorChain(
     private val customAudio: ShiftyCustomAudio,
     private val useNativeVocalBoost: Boolean,
+    useSmoothTrimSilence: Boolean,
 ) : AudioProcessorChain {
-    private val lowProcessor = ShiftyTrimSilenceProcessor(
+    private val legacyLowProcessor = ShiftyTrimSilenceProcessor(
         416000.microseconds,
         291000.microseconds,
         ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
         ::onSkippedFrames,
     )
-    private val mediumProcessor =
+    private val legacyMediumProcessor =
         ShiftyTrimSilenceProcessor(
             300000.microseconds,
             225000.microseconds,
             ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
             ::onSkippedFrames,
         )
-    private val highProcessor = ShiftyTrimSilenceProcessor(
+    private val legacyHighProcessor = ShiftyTrimSilenceProcessor(
         83000.microseconds,
         0.microseconds,
         ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
         ::onSkippedFrames,
+    )
+    private val smoothLowProcessor = SmoothTrimSilenceProcessor(
+        minimumQuietDuration = 416000.microseconds,
+        preservedQuietDuration = 120000.microseconds,
+        quietSpeed = 2,
+        silenceThresholdLevel = ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
+        onSkippedListener = ::onSkippedFrames,
+    )
+    private val smoothMediumProcessor = SmoothTrimSilenceProcessor(
+        minimumQuietDuration = 300000.microseconds,
+        preservedQuietDuration = 90000.microseconds,
+        quietSpeed = 3,
+        silenceThresholdLevel = ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
+        onSkippedListener = ::onSkippedFrames,
+    )
+    private val smoothHighProcessor = SmoothTrimSilenceProcessor(
+        minimumQuietDuration = 83000.microseconds,
+        preservedQuietDuration = 40000.microseconds,
+        quietSpeed = 5,
+        silenceThresholdLevel = ShiftyTrimSilenceProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
+        onSkippedListener = ::onSkippedFrames,
     )
     private val sonicAudioProcessor = SonicAudioProcessor()
     private val vocalBoostProcessor = VocalBoostAudioProcessor(
         isEngineAvailable = { useNativeVocalBoost && NativeVocalBoostEngine.isLibraryLoaded },
     )
 
+    private val trimProcessors: List<TrimSilenceAudioProcessor> = if (useSmoothTrimSilence) {
+        listOf(smoothLowProcessor, smoothMediumProcessor, smoothHighProcessor)
+    } else {
+        listOf(legacyLowProcessor, legacyMediumProcessor, legacyHighProcessor)
+    }
     private val audioProcessors = arrayOf(
-        lowProcessor,
-        mediumProcessor,
-        highProcessor,
+        trimProcessors[0],
+        trimProcessors[1],
+        trimProcessors[2],
         sonicAudioProcessor,
         vocalBoostProcessor,
     )
     private var trimMode = TrimMode.OFF
+    private var lastTrimInputFrames = 0L
+    private var lastTrimOutputFrames = 0L
+
     override fun getAudioProcessors(): Array<AudioProcessor> {
         return audioProcessors
     }
@@ -61,12 +91,12 @@ class ShiftyAudioProcessorChain(
     }
 
     override fun applySkipSilenceEnabled(skipSilenceEnabled: Boolean): Boolean {
-        for (audioProcessor in audioProcessors) {
-            (audioProcessor as? ShiftyTrimSilenceProcessor)?.enabled = false
+        for (processor in trimProcessors) {
+            processor.enabled = false
         }
         if (trimMode != TrimMode.OFF) {
             val index = trimMode.ordinal - 1
-            (audioProcessors[index] as ShiftyTrimSilenceProcessor).enabled = true
+            trimProcessors[index].enabled = true
         }
         return trimMode != TrimMode.OFF
     }
@@ -76,7 +106,7 @@ class ShiftyAudioProcessorChain(
     }
 
     override fun getSkippedOutputFrameCount(): Long {
-        return lowProcessor.skippedFrames + mediumProcessor.skippedFrames + highProcessor.skippedFrames
+        return trimProcessors.sumOf { it.skippedFrames }
     }
 
     fun applyTrimModeForNextUpdate(trimMode: TrimMode) {
@@ -85,6 +115,27 @@ class ShiftyAudioProcessorChain(
 
     fun setBoostVolume(boostVolume: Boolean) {
         vocalBoostProcessor.boostEnabled = boostVolume
+    }
+
+    fun playbackEffectsMetrics(basePlaybackSpeed: Double): PlaybackEffectsMetrics {
+        val activeTrimProcessor = trimProcessors.firstOrNull { it.enabled }
+        val trimInputFrames = activeTrimProcessor?.inputFrames ?: 0L
+        val trimOutputFrames = activeTrimProcessor?.outputFrames ?: 0L
+        val inputFrameDelta = trimInputFrames - lastTrimInputFrames
+        val outputFrameDelta = trimOutputFrames - lastTrimOutputFrames
+        lastTrimInputFrames = trimInputFrames
+        lastTrimOutputFrames = trimOutputFrames
+
+        val trimSpeedMultiplier = if (inputFrameDelta > 0 && outputFrameDelta > 0) {
+            inputFrameDelta.toDouble() / outputFrameDelta.toDouble()
+        } else {
+            1.0
+        }
+        return PlaybackEffectsMetrics(
+            effectivePlaybackSpeed = basePlaybackSpeed * trimSpeedMultiplier,
+            trimSpeedMultiplier = trimSpeedMultiplier,
+            vocalBoostGainDb = vocalBoostProcessor.currentGainDb().coerceAtLeast(0f),
+        )
     }
 
     fun usesNativeVocalBoost(): Boolean {

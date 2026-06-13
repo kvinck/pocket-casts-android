@@ -7,6 +7,7 @@
 #include <limits>
 #include <numeric>
 #include <vector>
+#include <atomic>
 
 namespace {
 
@@ -133,6 +134,7 @@ public:
         currentSubBlockSum = 0.0;
         currentSubBlockFrames = 0;
         currentGain = 1.0f;
+        displayedGainDb.store(0.0f, std::memory_order_relaxed);
         targetGain = 1.0f;
         limiterGain = 1.0f;
         integratedLufs = -std::numeric_limits<float>::infinity();
@@ -183,6 +185,10 @@ public:
         return outputFrames;
     }
 
+    float currentGainDb() const {
+        return displayedGainDb.load(std::memory_order_relaxed);
+    }
+
 private:
     int sampleRate = 0;
     int channelCount = 0;
@@ -199,6 +205,7 @@ private:
     double currentSubBlockSum = 0.0;
     int currentSubBlockFrames = 0;
     float currentGain = 1.0f;
+    std::atomic<float> displayedGainDb{0.0f};
     float targetGain = 1.0f;
     float limiterGain = 1.0f;
     float integratedLufs = -std::numeric_limits<float>::infinity();
@@ -307,6 +314,7 @@ private:
 
     void writeDelayedFrame(int16_t* output) {
         updateGain();
+        displayedGainDb.store(linearToDb(currentGain), std::memory_order_relaxed);
 
         const int64_t outputFrameIndex = frameIndex - queuedFrames();
         while (!peakDeque.empty() && peakDeque.front().first < outputFrameIndex) {
@@ -331,6 +339,13 @@ private:
             const float clipped = clampFloat(sample * kMaxInt16, kMinInt16, kMaxInt16);
             output[channel] = static_cast<int16_t>(std::lrintf(clipped));
         }
+    }
+
+    static float linearToDb(float value) {
+        if (value <= 0.0f) {
+            return 0.0f;
+        }
+        return 20.0f * std::log10(value);
     }
 };
 
@@ -383,6 +398,16 @@ Java_au_com_shiftyjelly_pocketcasts_repositories_playback_NativeVocalBoostEngine
         return -1;
     }
     return engine->drain(output, outputCapacityFrames);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_au_com_shiftyjelly_pocketcasts_repositories_playback_NativeVocalBoostEngine_nativeCurrentGainDb(
+    JNIEnv*, jobject, jlong handle) {
+    auto* engine = getEngine(handle);
+    if (engine == nullptr) {
+        return 0.0f;
+    }
+    return engine->currentGainDb();
 }
 
 extern "C" JNIEXPORT void JNICALL

@@ -34,6 +34,7 @@ class ShiftyRenderersFactory(
     private val customAudio = ShiftyCustomAudio(statsManager)
     private val useNativeVocalBoost = FeatureFlag.isEnabled(Feature.IMPROVED_VOLUME_BOOST, immutable = true) &&
         NativeVocalBoostEngine.isLibraryLoaded
+    private val useSmoothTrimSilence = FeatureFlag.isEnabled(Feature.IMPROVED_TRIM_SILENCE, immutable = true)
 
     fun setRemoveSilence(trimMode: TrimMode) {
         processorChain?.applyTrimModeForNextUpdate(trimMode)
@@ -51,12 +52,18 @@ class ShiftyRenderersFactory(
         internalRenderer?.customAudio?.playbackSpeed = playbackSpeed
     }
 
+    fun playbackEffectsMetrics(): PlaybackEffectsMetrics {
+        return processorChain?.playbackEffectsMetrics(playbackSpeed.toDouble()) ?: PlaybackEffectsMetrics(
+            effectivePlaybackSpeed = playbackSpeed.toDouble().takeIf { it > 0.0 } ?: 1.0,
+        )
+    }
+
     override fun buildAudioSink(
         context: Context,
         enableFloatOutput: Boolean,
         enableAudioOutputPlaybackParameters: Boolean,
     ): AudioSink {
-        processorChain = ShiftyAudioProcessorChain(customAudio, useNativeVocalBoost).apply {
+        processorChain = ShiftyAudioProcessorChain(customAudio, useNativeVocalBoost, useSmoothTrimSilence).apply {
             setBoostVolume(boostVolume)
         }
         return DefaultAudioSink.Builder(context)

@@ -108,6 +108,11 @@ class VocalBoostAudioProcessor(
 
     fun isProcessingBoost(): Boolean = processorEnabled && boostEnabled && !processorFailed
 
+    fun currentGainDb(): Float {
+        if (!isProcessingBoost()) return 0f
+        return engine?.currentGainDb() ?: 0f
+    }
+
     private fun outputPassthrough(inputBuffer: ByteBuffer) {
         val inputSlice = inputBuffer.slice()
         val outputBuffer = replaceOutputBuffer(inputSlice.remaining())

@@ -154,6 +154,8 @@ class VocalBoostAudioProcessorTest {
             return (drainSamples.size / channelCount).coerceAtMost(outputFrameCapacity)
         }
 
+        override fun currentGainDb(): Float = 0f
+
         override fun flush() = Unit
 
         override fun release() = Unit

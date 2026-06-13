@@ -36,7 +36,8 @@ class ShiftyTrimSilenceProcessor(
     private val paddingSilenceDuration: Duration,
     private val silenceThresholdLevel: Short,
     private var onSkippedListener: SkippedListener,
-) : BaseAudioProcessor() {
+) : BaseAudioProcessor(),
+    TrimSilenceAudioProcessor {
     private var bytesPerFrame: Int = 0
 
     /**
@@ -44,7 +45,7 @@ class ShiftyTrimSilenceProcessor(
      * through the processor. The value returned by this or [isActive] may change, and the processor
      * must be [flushed][flush] before queueing more data.
      */
-    var enabled = false
+    override var enabled = false
 
     /**
      * Buffers audio data that may be classified as silence while in [NoiseState.MaybeSilent]. If
@@ -68,7 +69,13 @@ class ShiftyTrimSilenceProcessor(
      * The total number of frames of input audio that were skipped due to being classified as
      * silence since the last call to [flush].
      */
-    var skippedFrames = 0L
+    override var skippedFrames = 0L
+        private set
+
+    @Volatile override var inputFrames = 0L
+        private set
+
+    @Volatile override var outputFrames = 0L
         private set
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat {
@@ -83,6 +90,7 @@ class ShiftyTrimSilenceProcessor(
     override fun isActive(): Boolean = enabled
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        val startPosition = inputBuffer.position()
         while (inputBuffer.hasRemaining() && !hasPendingOutput()) {
             when (state) {
                 Noisy -> processNoisy(inputBuffer)
@@ -90,6 +98,7 @@ class ShiftyTrimSilenceProcessor(
                 Silent -> processSilent(inputBuffer)
             }
         }
+        inputFrames += (inputBuffer.position() - startPosition) / bytesPerFrame
     }
 
     override fun onQueueEndOfStream() {
@@ -104,6 +113,8 @@ class ShiftyTrimSilenceProcessor(
         maybeSilenceBufferSize = 0
         paddingBuffer = Util.EMPTY_BYTE_ARRAY
         paddingBufferSize = 0
+        inputFrames = 0
+        outputFrames = 0
     }
 
     override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
@@ -123,6 +134,8 @@ class ShiftyTrimSilenceProcessor(
         }
         state = Noisy
         skippedFrames = 0
+        inputFrames = 0
+        outputFrames = 0
         maybeSilenceBufferSize = 0
         hasOutputNoise = false
     }
@@ -221,6 +234,7 @@ class ShiftyTrimSilenceProcessor(
         replaceOutputBuffer(size).put(data, 0, size).flip()
         if (size > 0) {
             hasOutputNoise = true
+            outputFrames += size / bytesPerFrame
         }
     }
 
@@ -232,6 +246,7 @@ class ShiftyTrimSilenceProcessor(
         replaceOutputBuffer(size).put(data).flip()
         if (size > 0) {
             hasOutputNoise = true
+            outputFrames += size / bytesPerFrame
         }
     }
 

@@ -20,9 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.asFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import au.com.shiftyjelly.pocketcasts.analytics.SourceView
 import au.com.shiftyjelly.pocketcasts.compose.components.SegmentedTabBar
 import au.com.shiftyjelly.pocketcasts.compose.components.SegmentedTabBarDefaults
@@ -36,6 +38,7 @@ import au.com.shiftyjelly.pocketcasts.player.databinding.FragmentEffectsBinding
 import au.com.shiftyjelly.pocketcasts.player.viewmodel.PlayerViewModel
 import au.com.shiftyjelly.pocketcasts.player.viewmodel.PlayerViewModel.PlaybackEffectsSettingsTab
 import au.com.shiftyjelly.pocketcasts.preferences.Settings
+import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackEffectsMetrics
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.user.StatsManager
 import au.com.shiftyjelly.pocketcasts.ui.helper.ColorUtils
@@ -56,7 +59,9 @@ import com.automattic.eventhorizon.SettingType
 import com.automattic.eventhorizon.Trackable
 import com.google.android.material.button.MaterialButtonToggleGroup
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
 import javax.inject.Inject
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.map
@@ -109,6 +114,7 @@ class EffectsFragment :
         }
 
         updateTrimState()
+        updateEffectsMetrics()
 
         return binding?.root
     }
@@ -148,6 +154,8 @@ class EffectsFragment :
         binding.switchVolume.setOnCheckedChangeListener(null)
         binding.switchVolume.isChecked = effects.isVolumeBoosted
         binding.switchVolume.setOnCheckedChangeListener(this)
+
+        updateEffectsMetrics()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -174,6 +182,15 @@ class EffectsFragment :
             binding?.trimLow?.setTextColor(trimButtonTextColor)
             binding?.trimMedium?.setTextColor(trimButtonTextColor)
             binding?.trimHigh?.setTextColor(trimButtonTextColor)
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    updateEffectsMetrics()
+                    delay(EFFECTS_METRICS_UPDATE_MS)
+                }
+            }
         }
     }
 
@@ -210,6 +227,7 @@ class EffectsFragment :
         binding.effectsConstraint.updatePadding(bottom = if (checked) 16.dpToPx(context) else 68.dpToPx(context))
 
         binding.trimToggleGroup.isVisible = checked
+        binding.trimSpeedLabel.isVisible = checked
         binding.detailSilenceLabel.text = if (checked) {
             val timeSaved = stats.timeSavedSilenceRemovalSecs
             val formattedTime = TimeHelper.formattedSeconds(timeSaved.toDouble(), "%d hours, %d minutes, %d seconds")
@@ -221,6 +239,28 @@ class EffectsFragment :
         } else {
             getString(LR.string.player_trim_silence_detail)
         }
+        updateEffectsMetrics()
+    }
+
+    private fun updateEffectsMetrics() {
+        val binding = binding ?: return
+        val effects = viewModel.effectsLive.value?.effects
+        val metrics = playbackManager.playbackEffectsMetrics()
+
+        binding.trimSpeedLabel.isVisible = effects?.trimMode != TrimMode.OFF
+        binding.trimSpeedLabel.text = formatTrimSpeed(effects, metrics)
+        binding.volumeBoostGainLabel.isVisible = effects?.isVolumeBoosted == true
+        binding.volumeBoostGainLabel.text = formatVocalBoostGain(metrics)
+    }
+
+    private fun formatTrimSpeed(effects: PlaybackEffects?, metrics: PlaybackEffectsMetrics): String {
+        val speed = effects?.let { metrics.effectivePlaybackSpeed.coerceAtLeast(it.playbackSpeed) }
+            ?: metrics.effectivePlaybackSpeed
+        return String.format(Locale.ENGLISH, "%.2fx", speed)
+    }
+
+    private fun formatVocalBoostGain(metrics: PlaybackEffectsMetrics): String {
+        return String.format(Locale.ENGLISH, "+%.0f dB", metrics.vocalBoostGainDb.coerceAtLeast(0f))
     }
 
     override fun onCheckedChanged(buttonView: CompoundButton, isChecked: Boolean) {
@@ -373,5 +413,9 @@ class EffectsFragment :
             selectedTabTextColor = Color.Black,
             onItemSelect = {},
         )
+    }
+
+    companion object {
+        private const val EFFECTS_METRICS_UPDATE_MS = 500L
     }
 }

@@ -14,6 +14,7 @@ interface VocalBoostEngine {
         outputFrameCapacity: Int,
     ): Int
     fun drain(outputBuffer: ByteBuffer, outputFrameCapacity: Int): Int
+    fun currentGainDb(): Float
     fun flush()
     fun release()
 }
@@ -50,6 +51,11 @@ class NativeVocalBoostEngine : VocalBoostEngine {
         return nativeDrain(handle, outputBuffer, outputFrameCapacity)
     }
 
+    override fun currentGainDb(): Float {
+        if (handle == 0L) return 0f
+        return nativeCurrentGainDb(handle)
+    }
+
     override fun flush() {
         if (handle != 0L) {
             nativeFlush(handle)
@@ -74,6 +80,7 @@ class NativeVocalBoostEngine : VocalBoostEngine {
         outputFrameCapacity: Int,
     ): Int
     private external fun nativeDrain(handle: Long, outputBuffer: ByteBuffer, outputFrameCapacity: Int): Int
+    private external fun nativeCurrentGainDb(handle: Long): Float
     private external fun nativeFlush(handle: Long)
     private external fun nativeRelease(handle: Long)
 

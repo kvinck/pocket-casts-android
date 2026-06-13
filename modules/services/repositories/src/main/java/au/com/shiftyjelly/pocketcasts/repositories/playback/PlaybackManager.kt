@@ -355,6 +355,10 @@ open class PlaybackManager @Inject constructor(
         return playbackStateRelay.blockingFirst().isPlaying
     }
 
+    fun playbackEffectsMetrics(): PlaybackEffectsMetrics {
+        return player?.playbackEffectsMetrics() ?: PlaybackEffectsMetrics()
+    }
+
     fun isStreaming(): Boolean {
         return player?.isStreaming ?: false
     }
@@ -1423,7 +1427,13 @@ open class PlaybackManager @Inject constructor(
         val episode = getCurrentEpisode() ?: return
 
         playbackStateRelay.blockingFirst().let { playbackState ->
-            playbackStateRelay.accept(playbackState.copy(state = PlaybackState.State.PLAYING, transientLoss = false, lastChangeFrom = LastChangeFrom.OnPlayerPlaying.value))
+            playbackStateRelay.accept(
+                playbackState.copy(
+                    state = PlaybackState.State.PLAYING,
+                    transientLoss = false,
+                    lastChangeFrom = LastChangeFrom.OnPlayerPlaying.value,
+                ),
+            )
         }
 
         if (player is CastPlayer) {
@@ -2396,7 +2406,12 @@ open class PlaybackManager @Inject constructor(
             playbackStateRelay.blockingFirst().let { playbackState ->
                 if (positionMs != playbackState.positionMs) {
                     Timber.d("Update current position of %s to %d", episode.title, positionMs)
-                    playbackStateRelay.accept(playbackState.copy(positionMs = positionMs, lastChangeFrom = LastChangeFrom.OnUpdateCurrentPosition.value))
+                    playbackStateRelay.accept(
+                        playbackState.copy(
+                            positionMs = positionMs,
+                            lastChangeFrom = LastChangeFrom.OnUpdateCurrentPosition.value,
+                        ),
+                    )
                 }
             }
         }

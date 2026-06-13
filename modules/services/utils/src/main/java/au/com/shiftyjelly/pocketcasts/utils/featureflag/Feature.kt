@@ -378,6 +378,15 @@ enum class Feature(
         hasDevToggle = true,
         addedOn = LocalDate.parse("2026-06-13"),
     ),
+    IMPROVED_TRIM_SILENCE(
+        key = "improved_trim_silence",
+        title = "Improved Trim Silence",
+        defaultValue = isDebugOrPrototypeBuild,
+        tier = FeatureTier.Free,
+        hasFirebaseRemoteFlag = true,
+        hasDevToggle = true,
+        addedOn = LocalDate.parse("2026-06-13"),
+    ),
 }
 
 sealed class FeatureTier {

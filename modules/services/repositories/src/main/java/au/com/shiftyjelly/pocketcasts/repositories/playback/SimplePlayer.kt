@@ -347,6 +347,12 @@ class SimplePlayer(
         }
         player.playbackParameters = PlaybackParameters(playbackEffects.playbackSpeed.toFloat(), 1f)
     }
+
+    override fun playbackEffectsMetrics(): PlaybackEffectsMetrics {
+        return renderersFactory?.playbackEffectsMetrics() ?: PlaybackEffectsMetrics(
+            effectivePlaybackSpeed = playbackEffects?.playbackSpeed ?: 1.0,
+        )
+    }
 }
 
 private class PlayPauseListener(
