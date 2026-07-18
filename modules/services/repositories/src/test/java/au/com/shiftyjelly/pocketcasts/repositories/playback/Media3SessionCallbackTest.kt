@@ -18,6 +18,7 @@ import au.com.shiftyjelly.pocketcasts.repositories.bookmark.BookmarkHelper
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import java.util.Date
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -31,6 +32,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doSuspendableAnswer
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -477,6 +479,46 @@ class Media3SessionCallbackTest {
             showedStreamWarning = any(),
             sourceView = any(),
         )
+    }
+
+    @Test
+    fun `onAddMediaItems waits for playNowSync before returning resolved MediaItem`() = runTest {
+        val episode = PodcastEpisode(
+            uuid = "ep-uuid-1",
+            title = "My Episode",
+            duration = 3600.0,
+            publishedDate = Date(),
+            podcastUuid = "pod-uuid-1",
+        )
+        val playbackStarted = CompletableDeferred<Unit>()
+        val playbackFinished = CompletableDeferred<Unit>()
+        whenever(episodeManager.findEpisodeByUuid("ep-uuid-1")).thenReturn(episode)
+        whenever {
+            playbackManager.playNowSync(
+                episode = any(),
+                forceStream = any(),
+                showedStreamWarning = any(),
+                sourceView = any(),
+            )
+        } doSuspendableAnswer {
+            playbackStarted.complete(Unit)
+            playbackFinished.await()
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setMediaId("pod-uuid-1#ep-uuid-1")
+            .build()
+
+        val future = callback.onAddMediaItems(mockSession, mockController, listOf(mediaItem))
+        playbackStarted.await()
+
+        assertFalse(future.isDone)
+
+        playbackFinished.complete(Unit)
+        testScope.advanceUntilIdle()
+
+        assertTrue(future.isDone)
+        assertEquals(1, future.get().size)
     }
 
     @Test

@@ -623,20 +623,17 @@ open class PlaybackManager @Inject constructor(
         val switchEpisode: Boolean = !upNextQueue.isCurrentEpisode(episode)
         if (switchEpisode || isPlayerSwitchRequired()) {
             LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Player switch required. Different episode: $switchEpisode")
-            pause(transientLoss = true)
+            pauseSuspend(transientLoss = true)
             upNextQueue.playNow(
                 episode = episode,
                 automaticUpNextSource = autoPlaySource(sourceView, episode),
-                onAdd = {
-                    launch {
-                        loadCurrentEpisode(
-                            play = true,
-                            forceStream = forceStream,
-                            showedStreamWarning = showedStreamWarning,
-                            sourceView = sourceView,
-                        )
-                    }
-                },
+                onAdd = null,
+            )
+            loadCurrentEpisode(
+                play = true,
+                forceStream = forceStream,
+                showedStreamWarning = showedStreamWarning,
+                sourceView = sourceView,
             )
         } else if (playbackStateRelay.blockingFirst().isPaused) {
             LogBuffer.i(LogBuffer.TAG_PLAYBACK, "No player switch required. Playing queue.")

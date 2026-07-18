@@ -15,6 +15,8 @@ constexpr float kTargetLufs = -14.0f;
 constexpr float kMinGainDb = -12.0f;
 constexpr float kMaxGainDb = 18.0f;
 constexpr float kAbsoluteGateLufs = -70.0f;
+constexpr float kNoiseGateLufs = -55.0f;
+constexpr float kNoiseGateGainDb = -9.0f;
 constexpr float kLufsOffset = -0.691f;
 constexpr float kLimiterCeiling = 0.89125094f; // -1 dBFS
 constexpr float kMaxInt16 = 32767.0f;
@@ -240,7 +242,10 @@ private:
             }
             const double meanSquare = sum / static_cast<double>(blockFrames * 4);
             if (meanSquare > std::numeric_limits<double>::min()) {
-                if (meanSquareToLufs(meanSquare) > kAbsoluteGateLufs) {
+                const float blockLufs = meanSquareToLufs(meanSquare);
+                if (blockLufs <= kNoiseGateLufs) {
+                    targetGain = std::min(targetGain, dbToLinear(kNoiseGateGainDb));
+                } else if (blockLufs > kAbsoluteGateLufs) {
                     gatedBlockMeanSquares.push_back(meanSquare);
                     recentGatedBlockMeanSquares.push_back(meanSquare);
                     while (recentGatedBlockMeanSquares.size() > kRecentBlockCount) {

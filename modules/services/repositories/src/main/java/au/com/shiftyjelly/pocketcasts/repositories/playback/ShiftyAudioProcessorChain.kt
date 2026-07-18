@@ -75,8 +75,6 @@ class ShiftyAudioProcessorChain(
         vocalBoostProcessor,
     )
     private var trimMode = TrimMode.OFF
-    private var lastTrimInputFrames = 0L
-    private var lastTrimOutputFrames = 0L
 
     override fun getAudioProcessors(): Array<AudioProcessor> {
         return audioProcessors
@@ -121,13 +119,9 @@ class ShiftyAudioProcessorChain(
         val activeTrimProcessor = trimProcessors.firstOrNull { it.enabled }
         val trimInputFrames = activeTrimProcessor?.inputFrames ?: 0L
         val trimOutputFrames = activeTrimProcessor?.outputFrames ?: 0L
-        val inputFrameDelta = trimInputFrames - lastTrimInputFrames
-        val outputFrameDelta = trimOutputFrames - lastTrimOutputFrames
-        lastTrimInputFrames = trimInputFrames
-        lastTrimOutputFrames = trimOutputFrames
 
-        val trimSpeedMultiplier = if (inputFrameDelta > 0 && outputFrameDelta > 0) {
-            inputFrameDelta.toDouble() / outputFrameDelta.toDouble()
+        val trimSpeedMultiplier = if (trimInputFrames > 0 && trimOutputFrames > 0) {
+            trimInputFrames.toDouble() / trimOutputFrames.toDouble()
         } else {
             1.0
         }
