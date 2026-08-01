@@ -12,6 +12,8 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import au.com.shiftyjelly.pocketcasts.models.type.TrimMode
+import au.com.shiftyjelly.pocketcasts.repositories.fingerprint.FingerprintPcmTap
+import au.com.shiftyjelly.pocketcasts.repositories.fingerprint.FingerprintTapAudioProcessor
 import au.com.shiftyjelly.pocketcasts.repositories.user.StatsManager
 import au.com.shiftyjelly.pocketcasts.utils.featureflag.Feature
 import au.com.shiftyjelly.pocketcasts.utils.featureflag.FeatureFlag
@@ -25,6 +27,8 @@ class ShiftyRenderersFactory(
     context: Context,
     statsManager: StatsManager,
     private var boostVolume: Boolean,
+    private val fingerprintPcmTap: FingerprintPcmTap? = null,
+    private val fingerprintTapEnabled: () -> Boolean = { false },
 ) : DefaultRenderersFactory(context),
     AnalyticsListener {
     private var playbackSpeed = 0f
@@ -63,14 +67,16 @@ class ShiftyRenderersFactory(
         enableFloatOutput: Boolean,
         enableAudioOutputPlaybackParameters: Boolean,
     ): AudioSink {
-        processorChain = ShiftyAudioProcessorChain(customAudio, useNativeVocalBoost, useSmoothTrimSilence).apply {
+        val tapProcessor = fingerprintPcmTap?.let { FingerprintTapAudioProcessor(it, fingerprintTapEnabled) }
+        processorChain = ShiftyAudioProcessorChain(customAudio, useNativeVocalBoost, useSmoothTrimSilence, tapProcessor).apply {
             setBoostVolume(boostVolume)
         }
-        return DefaultAudioSink.Builder(context)
+        val sink = DefaultAudioSink.Builder(context)
             .setAudioProcessorChain(processorChain!!)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
             .build()
+        return if (fingerprintPcmTap != null) FingerprintTapAudioSink(sink, fingerprintPcmTap) else sink
     }
 
     override fun buildAudioRenderers(

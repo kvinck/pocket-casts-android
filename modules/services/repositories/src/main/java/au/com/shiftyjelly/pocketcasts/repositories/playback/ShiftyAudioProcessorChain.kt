@@ -16,6 +16,7 @@ class ShiftyAudioProcessorChain(
     private val customAudio: ShiftyCustomAudio,
     private val useNativeVocalBoost: Boolean,
     useSmoothTrimSilence: Boolean,
+    fingerprintTapProcessor: AudioProcessor? = null,
 ) : AudioProcessorChain {
     private val legacyLowProcessor = ShiftyTrimSilenceProcessor(
         416000.microseconds,
@@ -67,13 +68,9 @@ class ShiftyAudioProcessorChain(
     } else {
         listOf(legacyLowProcessor, legacyMediumProcessor, legacyHighProcessor)
     }
-    private val audioProcessors = arrayOf(
-        trimProcessors[0],
-        trimProcessors[1],
-        trimProcessors[2],
-        sonicAudioProcessor,
-        vocalBoostProcessor,
-    )
+    private val audioProcessors = listOfNotNull(fingerprintTapProcessor).toTypedArray() +
+        trimProcessors.toTypedArray() +
+        arrayOf<AudioProcessor>(sonicAudioProcessor, vocalBoostProcessor)
     private var trimMode = TrimMode.OFF
 
     override fun getAudioProcessors(): Array<AudioProcessor> {
@@ -93,8 +90,7 @@ class ShiftyAudioProcessorChain(
             processor.enabled = false
         }
         if (trimMode != TrimMode.OFF) {
-            val index = trimMode.ordinal - 1
-            trimProcessors[index].enabled = true
+            trimProcessors[trimMode.ordinal - 1].enabled = true
         }
         return trimMode != TrimMode.OFF
     }

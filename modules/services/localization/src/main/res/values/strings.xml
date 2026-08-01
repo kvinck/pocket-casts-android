@@ -251,6 +251,7 @@
     <string name="tv_row_trending_videos">Trending Videos</string>
     <string name="tv_row_recommendations">Recommendations</string>
     <string name="tv_row_because_you_liked">Because you liked Podcast</string>
+    <string name="tv_home_keep_listening">Keep Listening</string>
     <string name="tv_sign_in_or_enter_code">or enter the following code</string>
     <string name="tv_sign_in_go_to_url">going to %1$s</string>
     <string name="unavailable">Unavailable</string>
@@ -1422,6 +1423,8 @@
     <string name="settings_apply_group_by">Would you like to change all your existing podcasts to be grouped by %s?</string>
     <string name="settings_apply_to_existing">Apply to existing</string>
     <string name="settings_apply_to_existing_podcasts">Apply to existing podcasts?</string>
+    <string name="settings_audio_only">Audio only</string>
+    <string name="settings_audio_only_summary">If on, episodes with video will play as audio only, saving data.</string>
     <string name="settings_auto_archive_episode_limit">Episode limit</string>
     <string name="settings_auto_archive_episode_limit_summary">For shows that release hourly or daily episodes, setting an episode limit can help keep only the most recent ones, while archiving any that are older.</string>
     <string name="settings_auto_archive_inactive">Archive inactive episodes</string>
