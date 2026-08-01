@@ -9,6 +9,7 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicBoolean
 import timber.log.Timber
 
 @OptIn(UnstableApi::class)
@@ -16,19 +17,28 @@ class VocalBoostAudioProcessor(
     private val isEngineAvailable: () -> Boolean = { NativeVocalBoostEngine.isLibraryLoaded },
     private val engineFactory: () -> VocalBoostEngine = { NativeVocalBoostEngine() },
 ) : BaseAudioProcessor() {
+    @Volatile
     var boostEnabled = false
+        set(value) {
+            if (field != value) {
+                field = value
+                engineResetPending.set(true)
+            }
+        }
     private var processorEnabled = false
     private var processorFailed = false
     private var bytesPerFrame = 0
-    private var lookaheadBytes = 0
+    private var limiterLookaheadBytes = 0
     private var engine: VocalBoostEngine? = null
+    private val engineResetPending = AtomicBoolean()
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
             throw UnhandledAudioFormatException(inputAudioFormat)
         }
         bytesPerFrame = inputAudioFormat.bytesPerFrame
-        lookaheadBytes = bytesPerFrame * (inputAudioFormat.sampleRate / 4).coerceAtLeast(1)
+        limiterLookaheadBytes = bytesPerFrame *
+            (inputAudioFormat.sampleRate / LIMITER_LOOKAHEAD_DIVISOR).coerceAtLeast(1)
         processorEnabled = isEngineAvailable()
         return if (processorEnabled) inputAudioFormat else AudioFormat.NOT_SET
     }
@@ -36,7 +46,9 @@ class VocalBoostAudioProcessor(
     override fun isActive(): Boolean = processorEnabled
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        if (!boostEnabled || processorFailed) {
+        val shouldBoost = boostEnabled
+        resetEngineIfPending()
+        if (!shouldBoost || processorFailed) {
             outputPassthrough(inputBuffer)
             return
         }
@@ -67,9 +79,11 @@ class VocalBoostAudioProcessor(
     }
 
     override fun onQueueEndOfStream() {
-        if (!boostEnabled || processorFailed) return
+        val shouldBoost = boostEnabled
+        resetEngineIfPending()
+        if (!shouldBoost || processorFailed) return
 
-        val outputBuffer = replaceOutputBuffer(lookaheadBytes).order(ByteOrder.nativeOrder())
+        val outputBuffer = replaceOutputBuffer(limiterLookaheadBytes).order(ByteOrder.nativeOrder())
         val outputFrameCapacity = outputBuffer.capacity() / bytesPerFrame
         val outputFrameCount = engine?.drain(outputBuffer, outputFrameCapacity) ?: NativeVocalBoostEngine.ERROR
         if (outputFrameCount < 0) {
@@ -86,6 +100,7 @@ class VocalBoostAudioProcessor(
     override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
         super.onFlush(streamMetadata)
         processorFailed = false
+        engineResetPending.set(false)
         engine?.release()
         engine = null
         if (processorEnabled) {
@@ -102,6 +117,7 @@ class VocalBoostAudioProcessor(
         boostEnabled = false
         processorEnabled = false
         processorFailed = false
+        engineResetPending.set(false)
         engine?.release()
         engine = null
     }
@@ -119,5 +135,15 @@ class VocalBoostAudioProcessor(
         outputBuffer.put(inputSlice)
         outputBuffer.flip()
         inputBuffer.position(inputBuffer.limit())
+    }
+
+    private fun resetEngineIfPending() {
+        if (engineResetPending.getAndSet(false)) {
+            engine?.flush()
+        }
+    }
+
+    private companion object {
+        const val LIMITER_LOOKAHEAD_DIVISOR = 200 // 5 ms
     }
 }

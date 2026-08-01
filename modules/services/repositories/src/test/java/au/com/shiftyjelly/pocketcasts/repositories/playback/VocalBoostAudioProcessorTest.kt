@@ -95,6 +95,29 @@ class VocalBoostAudioProcessorTest {
 
         assertArrayEquals(shortArrayOf(10, 20), processor.getOutput().toShortArray())
         assertEquals(1, engine.drainCalls)
+        assertEquals(220, engine.drainOutputCapacityFrames)
+    }
+
+    @Test
+    fun `processor flushes native state on the next buffer when boost setting changes`() {
+        val engine = FakeVocalBoostEngine()
+        val processor = VocalBoostAudioProcessor(
+            isEngineAvailable = { true },
+            engineFactory = { engine },
+        )
+
+        processor.configure(audioFormat())
+        processor.flush()
+        processor.boostEnabled = true
+        processor.queueInput(directBuffer(1, 2))
+        processor.getOutput()
+        processor.boostEnabled = true
+        processor.queueInput(directBuffer(3, 4))
+        processor.getOutput()
+        processor.boostEnabled = false
+        processor.queueInput(directBuffer(5, 6))
+
+        assertEquals(2, engine.flushCalls)
     }
 
     private fun audioFormat() = AudioFormat(44100, 2, C.ENCODING_PCM_16BIT)
@@ -125,6 +148,10 @@ class VocalBoostAudioProcessorTest {
             private set
         var drainCalls = 0
             private set
+        var drainOutputCapacityFrames = 0
+            private set
+        var flushCalls = 0
+            private set
 
         override fun configure(sampleRate: Int, channelCount: Int) {
             this.sampleRate = sampleRate
@@ -148,6 +175,7 @@ class VocalBoostAudioProcessorTest {
 
         override fun drain(outputBuffer: ByteBuffer, outputFrameCapacity: Int): Int {
             drainCalls++
+            drainOutputCapacityFrames = outputFrameCapacity
             drainSamples.forEachIndexed { index, sample ->
                 outputBuffer.putShort(index * Short.SIZE_BYTES, sample)
             }
@@ -156,7 +184,9 @@ class VocalBoostAudioProcessorTest {
 
         override fun currentGainDb(): Float = 0f
 
-        override fun flush() = Unit
+        override fun flush() {
+            flushCalls++
+        }
 
         override fun release() = Unit
     }

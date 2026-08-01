@@ -1,44 +1,46 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <deque>
 #include <limits>
 #include <numeric>
 #include <vector>
-#include <atomic>
 
 namespace {
 
-constexpr float kTargetLufs = -14.0f;
+// VoiceBoostN targets -17 LUFS before compression, producing approximately -14 LUFS at the output.
+constexpr float kTargetLufs = -17.0f;
 constexpr float kMinGainDb = -12.0f;
-constexpr float kMaxGainDb = 18.0f;
+constexpr float kMaxGainDb = 24.0f;
 constexpr float kAbsoluteGateLufs = -70.0f;
-constexpr float kNoiseGateLufs = -55.0f;
-constexpr float kNoiseGateGainDb = -9.0f;
 constexpr float kLufsOffset = -0.691f;
-constexpr float kLimiterCeiling = 0.89125094f; // -1 dBFS
+constexpr float kLimiterCeiling = 0.7943282f; // -2 dBFS
 constexpr float kMaxInt16 = 32767.0f;
 constexpr float kMinInt16 = -32768.0f;
 constexpr float kPi = 3.14159265358979323846f;
-constexpr size_t kRecentBlockCount = 4; // Roughly 700 ms because 400 ms windows are updated every 100 ms.
-constexpr int kPeakLookaheadDivisor = 100; // 10 ms.
-constexpr int kLoudnessLookaheadDivisor = 4; // 250 ms.
+constexpr size_t kMaxLoudnessBlockCount = 30; // Three seconds at one measurement every 100 ms.
+constexpr float kHighPassFrequency = 80.0f;
+constexpr float kHighPassQ = 0.707f;
+constexpr float kCompressorThresholdDb = -8.0f;
+constexpr float kCompressorRatio = 2.0f;
+constexpr float kCompressorAttackMs = 100.0f;
+constexpr float kCompressorReleaseMs = 400.0f;
+constexpr float kGainSmoothingMs = 200.0f;
+constexpr float kLimiterLookaheadMs = 5.0f;
+constexpr float kLimiterReleaseMs = 100.0f;
 
 float dbToLinear(float db) {
     return std::pow(10.0f, db / 20.0f);
-}
-
-float clampFloat(float value, float minValue, float maxValue) {
-    return std::max(minValue, std::min(maxValue, value));
 }
 
 float meanSquareToLufs(double meanSquare) {
     if (meanSquare <= std::numeric_limits<double>::min()) {
         return -std::numeric_limits<float>::infinity();
     }
-    return kLufsOffset + 10.0f * std::log10(static_cast<float>(meanSquare));
+    return kLufsOffset + static_cast<float>(10.0 * std::log10(meanSquare));
 }
 
 struct Biquad {
@@ -62,6 +64,19 @@ struct Biquad {
         z2 = 0.0f;
     }
 
+    void setCoefficients(
+        double newB0,
+        double newB1,
+        double newB2,
+        double newA1,
+        double newA2) {
+        b0 = static_cast<float>(newB0);
+        b1 = static_cast<float>(newB1);
+        b2 = static_cast<float>(newB2);
+        a1 = static_cast<float>(newA1);
+        a2 = static_cast<float>(newA2);
+    }
+
     void setHighPass(float sampleRate, float frequency, float q) {
         const float omega = 2.0f * kPi * frequency / sampleRate;
         const float sinOmega = std::sin(omega);
@@ -76,20 +91,6 @@ struct Biquad {
         a2 = (1.0f - alpha) / a0;
     }
 
-    void setHighShelf(float sampleRate, float frequency, float gainDb, float slope) {
-        const float a = std::pow(10.0f, gainDb / 40.0f);
-        const float omega = 2.0f * kPi * frequency / sampleRate;
-        const float sinOmega = std::sin(omega);
-        const float cosOmega = std::cos(omega);
-        const float beta = std::sqrt(a) / slope;
-        const float a0 = (a + 1.0f) - (a - 1.0f) * cosOmega + beta * sinOmega;
-
-        b0 = a * ((a + 1.0f) + (a - 1.0f) * cosOmega + beta * sinOmega) / a0;
-        b1 = -2.0f * a * ((a - 1.0f) + (a + 1.0f) * cosOmega) / a0;
-        b2 = a * ((a + 1.0f) + (a - 1.0f) * cosOmega - beta * sinOmega) / a0;
-        a1 = 2.0f * ((a - 1.0f) - (a + 1.0f) * cosOmega) / a0;
-        a2 = ((a + 1.0f) - (a - 1.0f) * cosOmega - beta * sinOmega) / a0;
-    }
 };
 
 struct ChannelWeighting {
@@ -97,8 +98,32 @@ struct ChannelWeighting {
     Biquad highShelf;
 
     void configure(float sampleRate) {
-        highPass.setHighPass(sampleRate, 38.0f, 0.5f);
-        highShelf.setHighShelf(sampleRate, 1681.974f, 4.0f, 1.0f);
+        constexpr double highShelfFrequency = 1681.9744509555319;
+        constexpr double highShelfGainDb = 3.99984385397;
+        constexpr double highShelfQ = 0.7071752369554193;
+        const double highShelfK = std::tan(kPi * highShelfFrequency / sampleRate);
+        const double highShelfK2 = highShelfK * highShelfK;
+        const double highShelfGain = std::pow(10.0, highShelfGainDb / 20.0);
+        const double highShelfIntermediateGain = std::pow(highShelfGain, 0.499666774155);
+        const double highShelfA0 = 1.0 + highShelfK / highShelfQ + highShelfK2;
+        highShelf.setCoefficients(
+            (highShelfGain + highShelfIntermediateGain * highShelfK / highShelfQ + highShelfK2) / highShelfA0,
+            2.0 * (highShelfK2 - highShelfGain) / highShelfA0,
+            (highShelfGain - highShelfIntermediateGain * highShelfK / highShelfQ + highShelfK2) / highShelfA0,
+            2.0 * (highShelfK2 - 1.0) / highShelfA0,
+            (1.0 - highShelfK / highShelfQ + highShelfK2) / highShelfA0);
+
+        constexpr double highPassFrequency = 38.13547087613982;
+        constexpr double highPassQ = 0.5003270373253953;
+        const double highPassK = std::tan(kPi * highPassFrequency / sampleRate);
+        const double highPassK2 = highPassK * highPassK;
+        const double highPassA0 = 1.0 + highPassK / highPassQ + highPassK2;
+        highPass.setCoefficients(
+            1.0,
+            -2.0,
+            1.0,
+            2.0 * (highPassK2 - 1.0) / highPassA0,
+            (1.0 - highPassK / highPassQ + highPassK2) / highPassA0);
         reset();
     }
 
@@ -115,15 +140,34 @@ struct ChannelWeighting {
 class VocalBoostEngine {
 public:
     void configure(int newSampleRate, int newChannelCount) {
+        if (newSampleRate <= 0 || newChannelCount <= 0) {
+            sampleRate = 0;
+            channelCount = 0;
+            highPassFilters.clear();
+            compressorEnvelopes.clear();
+            reset();
+            return;
+        }
+
         sampleRate = newSampleRate;
         channelCount = newChannelCount;
-        peakLookaheadFrames = std::max(1, sampleRate / kPeakLookaheadDivisor);
-        loudnessLookaheadFrames = std::max(peakLookaheadFrames, sampleRate / kLoudnessLookaheadDivisor);
+        peakLookaheadFrames = std::max(1, static_cast<int>(sampleRate * kLimiterLookaheadMs / 1000.0f));
         blockFrames = std::max(1, sampleRate / 10);
-        weighting.assign(channelCount, ChannelWeighting());
-        for (auto& channel : weighting) {
-            channel.configure(static_cast<float>(sampleRate));
+        weighting.configure(static_cast<float>(sampleRate));
+        highPassFilters.assign(channelCount, Biquad());
+        for (auto& filter : highPassFilters) {
+            filter.setHighPass(static_cast<float>(sampleRate), kHighPassFrequency, kHighPassQ);
         }
+        compressorThreshold = dbToLinear(kCompressorThresholdDb);
+        compressorSlope = 1.0f - 1.0f / kCompressorRatio;
+        compressorAttackCoefficient = std::exp(
+            -1.0f / (static_cast<float>(sampleRate) * kCompressorAttackMs / 1000.0f));
+        compressorReleaseCoefficient = std::exp(
+            -1.0f / (static_cast<float>(sampleRate) * kCompressorReleaseMs / 1000.0f));
+        gainSmoothingCoefficient = 1.0f - std::exp(
+            -1.0f / (static_cast<float>(sampleRate) * kGainSmoothingMs / 1000.0f));
+        limiterReleaseCoefficient = 1.0f - std::exp(
+            -2.2f / (static_cast<float>(sampleRate) * kLimiterReleaseMs / 1000.0f));
         reset();
     }
 
@@ -132,7 +176,6 @@ public:
         peakDeque.clear();
         subBlockSums.clear();
         gatedBlockMeanSquares.clear();
-        recentGatedBlockMeanSquares.clear();
         currentSubBlockSum = 0.0;
         currentSubBlockFrames = 0;
         currentGain = 1.0f;
@@ -140,12 +183,12 @@ public:
         targetGain = 1.0f;
         limiterGain = 1.0f;
         integratedLufs = -std::numeric_limits<float>::infinity();
-        recentLufs = -std::numeric_limits<float>::infinity();
         relativeGateLufs = -std::numeric_limits<float>::infinity();
         frameIndex = 0;
-        lastSamples.assign(channelCount, 0.0f);
-        for (auto& channel : weighting) {
-            channel.reset();
+        compressorEnvelopes.assign(channelCount, 0.0f);
+        weighting.reset();
+        for (auto& filter : highPassFilters) {
+            filter.reset();
         }
     }
 
@@ -156,25 +199,28 @@ public:
 
         int outputFrames = 0;
         for (int frame = 0; frame < inputFrames; ++frame) {
+            const float measuredSample = static_cast<float>(input[frame * channelCount]) / kMaxInt16;
+            measureSample(measuredSample);
+            updateGain();
+
             float framePeak = 0.0f;
             for (int channel = 0; channel < channelCount; ++channel) {
                 const int sampleIndex = frame * channelCount + channel;
                 const float sample = static_cast<float>(input[sampleIndex]) / kMaxInt16;
-                measureSample(sample, channel);
-
-                const float interpolatedPeak = std::abs((sample + lastSamples[channel]) * 0.5f);
-                framePeak = std::max(framePeak, std::max(std::abs(sample), interpolatedPeak));
-                lastSamples[channel] = sample;
-                delayedSamples.push_back(sample);
+                const float equalizedSample = highPassFilters[channel].process(sample * currentGain);
+                const float compressedSample = compress(equalizedSample, channel);
+                framePeak = std::max(framePeak, std::abs(compressedSample));
+                delayedSamples.push_back(compressedSample);
             }
             pushPeak(framePeak);
             ++frameIndex;
 
-            while (queuedFrames() > loudnessLookaheadFrames && outputFrames < outputCapacityFrames) {
+            while (queuedFrames() > peakLookaheadFrames && outputFrames < outputCapacityFrames) {
                 writeDelayedFrame(output + outputFrames * channelCount);
                 ++outputFrames;
             }
         }
+        displayedGainDb.store(linearToDb(currentGain), std::memory_order_relaxed);
         return outputFrames;
     }
 
@@ -195,15 +241,14 @@ private:
     int sampleRate = 0;
     int channelCount = 0;
     int peakLookaheadFrames = 1;
-    int loudnessLookaheadFrames = 1;
     int blockFrames = 1;
-    std::vector<ChannelWeighting> weighting;
-    std::vector<float> lastSamples;
+    ChannelWeighting weighting;
+    std::vector<Biquad> highPassFilters;
+    std::vector<float> compressorEnvelopes;
     std::deque<float> delayedSamples;
     std::deque<std::pair<int64_t, float>> peakDeque;
     std::deque<double> subBlockSums;
-    std::vector<double> gatedBlockMeanSquares;
-    std::deque<double> recentGatedBlockMeanSquares;
+    std::deque<double> gatedBlockMeanSquares;
     double currentSubBlockSum = 0.0;
     int currentSubBlockFrames = 0;
     float currentGain = 1.0f;
@@ -211,22 +256,25 @@ private:
     float targetGain = 1.0f;
     float limiterGain = 1.0f;
     float integratedLufs = -std::numeric_limits<float>::infinity();
-    float recentLufs = -std::numeric_limits<float>::infinity();
     float relativeGateLufs = -std::numeric_limits<float>::infinity();
+    float compressorThreshold = 1.0f;
+    float compressorSlope = 0.5f;
+    float compressorAttackCoefficient = 0.0f;
+    float compressorReleaseCoefficient = 0.0f;
+    float gainSmoothingCoefficient = 0.0f;
+    float limiterReleaseCoefficient = 0.0f;
     int64_t frameIndex = 0;
 
     int queuedFrames() const {
         return static_cast<int>(delayedSamples.size() / static_cast<size_t>(channelCount));
     }
 
-    void measureSample(float sample, int channel) {
-        const float weighted = weighting[channel].process(sample);
+    void measureSample(float sample) {
+        const float weighted = weighting.process(sample);
         currentSubBlockSum += static_cast<double>(weighted) * static_cast<double>(weighted);
-        if (channel == channelCount - 1) {
-            ++currentSubBlockFrames;
-            if (currentSubBlockFrames >= blockFrames) {
-                finishSubBlock();
-            }
+        ++currentSubBlockFrames;
+        if (currentSubBlockFrames >= blockFrames) {
+            finishSubBlock();
         }
     }
 
@@ -243,13 +291,10 @@ private:
             const double meanSquare = sum / static_cast<double>(blockFrames * 4);
             if (meanSquare > std::numeric_limits<double>::min()) {
                 const float blockLufs = meanSquareToLufs(meanSquare);
-                if (blockLufs <= kNoiseGateLufs) {
-                    targetGain = std::min(targetGain, dbToLinear(kNoiseGateGainDb));
-                } else if (blockLufs > kAbsoluteGateLufs) {
+                if (blockLufs > kAbsoluteGateLufs) {
                     gatedBlockMeanSquares.push_back(meanSquare);
-                    recentGatedBlockMeanSquares.push_back(meanSquare);
-                    while (recentGatedBlockMeanSquares.size() > kRecentBlockCount) {
-                        recentGatedBlockMeanSquares.pop_front();
+                    if (gatedBlockMeanSquares.size() > kMaxLoudnessBlockCount) {
+                        gatedBlockMeanSquares.pop_front();
                     }
                     updateTargetGain();
                 }
@@ -287,27 +332,28 @@ private:
 
         const double integratedMeanSquare = relativeGatedSum / static_cast<double>(relativeGatedCount);
         integratedLufs = meanSquareToLufs(integratedMeanSquare);
-        float gainDb = clampFloat(kTargetLufs - integratedLufs, kMinGainDb, kMaxGainDb);
-
-        if (recentGatedBlockMeanSquares.size() >= 4) {
-            const double recentSum = std::accumulate(
-                recentGatedBlockMeanSquares.begin(),
-                recentGatedBlockMeanSquares.end(),
-                0.0);
-            recentLufs = meanSquareToLufs(recentSum / static_cast<double>(recentGatedBlockMeanSquares.size()));
-
-            if (recentLufs < integratedLufs - 3.0f && recentLufs > kAbsoluteGateLufs + 10.0f) {
-                const float recentGainDb = clampFloat(kTargetLufs - recentLufs, kMinGainDb, kMaxGainDb);
-                gainDb = std::max(gainDb, recentGainDb);
-            }
-        }
-
+        const float gainDb = std::clamp(kTargetLufs - integratedLufs, kMinGainDb, kMaxGainDb);
         targetGain = dbToLinear(gainDb);
     }
 
     void updateGain() {
-        const float coefficient = targetGain < currentGain ? 0.0025f : 0.00008f;
-        currentGain += (targetGain - currentGain) * coefficient;
+        currentGain += (targetGain - currentGain) * gainSmoothingCoefficient;
+    }
+
+    float compress(float sample, int channel) {
+        const float inputLevel = std::abs(sample);
+        float& envelope = compressorEnvelopes[channel];
+        const float coefficient = inputLevel > envelope
+            ? compressorAttackCoefficient
+            : compressorReleaseCoefficient;
+        envelope = coefficient * envelope + (1.0f - coefficient) * inputLevel;
+
+        if (envelope > compressorThreshold) {
+            const float ratio = compressorThreshold / envelope;
+            const float gain = std::max(0.1f, 1.0f - compressorSlope * (1.0f - ratio));
+            return sample * gain;
+        }
+        return sample;
     }
 
     void pushPeak(float peak) {
@@ -318,9 +364,6 @@ private:
     }
 
     void writeDelayedFrame(int16_t* output) {
-        updateGain();
-        displayedGainDb.store(linearToDb(currentGain), std::memory_order_relaxed);
-
         const int64_t outputFrameIndex = frameIndex - queuedFrames();
         while (!peakDeque.empty() && peakDeque.front().first < outputFrameIndex) {
             peakDeque.pop_front();
@@ -333,15 +376,17 @@ private:
             }
             lookaheadPeak = std::max(lookaheadPeak, peak.second);
         }
-        const float boostedPeak = lookaheadPeak * currentGain;
-        const float wantedLimiterGain = boostedPeak > kLimiterCeiling ? kLimiterCeiling / boostedPeak : 1.0f;
-        const float limiterCoefficient = wantedLimiterGain < limiterGain ? 0.2f : 0.0008f;
-        limiterGain += (wantedLimiterGain - limiterGain) * limiterCoefficient;
+        const float wantedLimiterGain = lookaheadPeak > kLimiterCeiling ? kLimiterCeiling / lookaheadPeak : 1.0f;
+        if (wantedLimiterGain < limiterGain) {
+            limiterGain = wantedLimiterGain;
+        } else {
+            limiterGain += (1.0f - limiterGain) * limiterReleaseCoefficient;
+        }
 
         for (int channel = 0; channel < channelCount; ++channel) {
-            const float sample = delayedSamples.front() * currentGain * limiterGain;
+            const float sample = delayedSamples.front() * limiterGain;
             delayedSamples.pop_front();
-            const float clipped = clampFloat(sample * kMaxInt16, kMinInt16, kMaxInt16);
+            const float clipped = std::clamp(sample * kMaxInt16, kMinInt16, kMaxInt16);
             output[channel] = static_cast<int16_t>(std::lrintf(clipped));
         }
     }
