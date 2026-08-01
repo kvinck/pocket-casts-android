@@ -705,6 +705,17 @@
     <string name="podcast_settings_auto_archive" translatable="false">@string/auto_archive</string>
     <string name="podcast_settings_auto_archive_custom">Custom for this podcast</string>
     <string name="podcast_settings_auto_archive_custom_summary">Need more fine grained control? Enable auto archive settings for this podcast</string>
+    <string name="podcast_settings_auto_archive_title_filters">Archive by episode title</string>
+    <string name="podcast_settings_auto_archive_title_filters_summary">Automatically archive episodes whose title contains any of these words. Capitalisation is ignored.</string>
+    <string name="podcast_settings_auto_archive_title_filters_none">Off</string>
+    <plurals name="podcast_settings_auto_archive_title_filters_count">
+        <item quantity="one">%d title</item>
+        <item quantity="other">%d titles</item>
+    </plurals>
+    <string name="podcast_settings_auto_archive_title_filters_add">Add a title</string>
+    <string name="podcast_settings_auto_archive_title_filters_dialog_title">Episode title</string>
+    <string name="podcast_settings_auto_archive_title_filters_dialog_placeholder">Part of an episode title</string>
+    <string name="podcast_settings_auto_archive_title_filters_remove">Remove title</string>
     <string name="podcast_settings_auto_download" translatable="false">@string/auto_download</string>
     <string name="podcast_settings_auto_download_summary">Download new episodes automatically</string>
     <string name="podcast_settings_playback_effects">Playback effects</string>

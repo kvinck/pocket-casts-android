@@ -143,6 +143,7 @@ interface PodcastManager {
     suspend fun updateArchiveAfterPlaying(uuid: String, value: AutoArchiveAfterPlaying)
     suspend fun updateArchiveAfterInactive(uuid: String, value: AutoArchiveInactive)
     suspend fun updateArchiveEpisodeLimit(uuid: String, value: AutoArchiveLimit)
+    suspend fun updateArchiveTitleFilters(uuid: String, value: List<String>)
 
     fun updatePodcastLatestEpisodeBlocking(podcast: Podcast)
 }

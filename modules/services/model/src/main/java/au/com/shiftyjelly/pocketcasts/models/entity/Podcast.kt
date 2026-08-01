@@ -83,6 +83,8 @@ data class Podcast(
     @ColumnInfo(name = "auto_archive_inactive_after_modified") var autoArchiveInactiveModified: Date? = null,
     @ColumnInfo(name = "auto_archive_episode_limit") internal var rawAutoArchiveEpisodeLimit: AutoArchiveLimit = AutoArchiveLimit.None,
     @ColumnInfo(name = "auto_archive_episode_limit_modified") var autoArchiveEpisodeLimitModified: Date? = null,
+    @ColumnInfo(name = "auto_archive_title_filters", defaultValue = "[]") var autoArchiveTitleFilters: List<String> = emptyList(),
+    @ColumnInfo(name = "auto_archive_title_filters_modified") var autoArchiveTitleFiltersModified: Date? = null,
     @ColumnInfo(name = "estimated_next_episode") var estimatedNextEpisode: Date? = null,
     @ColumnInfo(name = "episode_frequency") var episodeFrequency: String? = null,
     @ColumnInfo(name = "grouping") var grouping: PodcastGrouping = PodcastGrouping.None,

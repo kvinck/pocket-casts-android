@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import au.com.shiftyjelly.pocketcasts.models.converter.AlternateEnclosureSourcesConverter
+import au.com.shiftyjelly.pocketcasts.models.converter.StringListConverter
 import au.com.shiftyjelly.pocketcasts.models.db.AppDatabase
 import au.com.shiftyjelly.pocketcasts.models.db.dao.AlternateEnclosureDao
 import au.com.shiftyjelly.pocketcasts.models.db.dao.ChapterDao
@@ -37,6 +38,7 @@ object ModelModule {
         return listOf(
             AnonymousBumpStat.CustomEventPropsTypeConverter(moshi),
             AlternateEnclosureSourcesConverter(moshi),
+            StringListConverter(moshi),
         )
     }
 

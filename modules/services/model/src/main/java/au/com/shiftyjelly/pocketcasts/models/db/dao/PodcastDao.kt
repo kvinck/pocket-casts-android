@@ -490,6 +490,9 @@ abstract class PodcastDao {
     @Query("UPDATE podcasts SET auto_archive_episode_limit = :value, auto_archive_episode_limit_modified = :modified, sync_status = 0 WHERE uuid = :uuid")
     abstract suspend fun updateArchiveEpisodeLimit(uuid: String, value: AutoArchiveLimit, modified: Date = Date())
 
+    @Query("UPDATE podcasts SET auto_archive_title_filters = :value, auto_archive_title_filters_modified = :modified, sync_status = 0 WHERE uuid = :uuid")
+    abstract suspend fun updateArchiveTitleFilters(uuid: String, value: List<String>, modified: Date = Date())
+
     @Query("DELETE FROM curated_podcasts")
     protected abstract suspend fun deleteAllCuratedPodcasts()
 

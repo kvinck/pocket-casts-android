@@ -92,6 +92,7 @@ class PodcastManagerImpl @Inject constructor(
             podcast.autoArchiveAfterPlaying = AutoArchiveAfterPlaying.defaultValue(context)
             podcast.autoArchiveInactive = AutoArchiveInactive.Default
             podcast.autoArchiveEpisodeLimit = null
+            podcast.autoArchiveTitleFilters = emptyList()
             podcast.overrideGlobalArchive = false
             podcast.folderUuid = null
             podcastDao.updateSuspend(podcast)
@@ -679,6 +680,10 @@ class PodcastManagerImpl @Inject constructor(
 
     override suspend fun updateArchiveEpisodeLimit(uuid: String, value: AutoArchiveLimit) {
         podcastDao.updateArchiveEpisodeLimit(uuid, value)
+    }
+
+    override suspend fun updateArchiveTitleFilters(uuid: String, value: List<String>) {
+        podcastDao.updateArchiveTitleFilters(uuid, value)
     }
 
     override suspend fun countPlayedEpisodes(podcastUuid: String): Int {

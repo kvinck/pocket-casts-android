@@ -14,6 +14,7 @@ import au.com.shiftyjelly.pocketcasts.preferences.Settings
 import au.com.shiftyjelly.pocketcasts.repositories.playback.PlaybackManager
 import au.com.shiftyjelly.pocketcasts.repositories.playlist.PlaylistManager
 import au.com.shiftyjelly.pocketcasts.repositories.playlist.SmartPlaylistPreview
+import au.com.shiftyjelly.pocketcasts.repositories.podcast.EpisodeManager
 import au.com.shiftyjelly.pocketcasts.repositories.podcast.PodcastManager
 import au.com.shiftyjelly.pocketcasts.utils.extensions.decrementByOrRound
 import au.com.shiftyjelly.pocketcasts.utils.extensions.incrementByOrRound
@@ -57,6 +58,7 @@ import kotlinx.coroutines.withContext
 @HiltViewModel(assistedFactory = PodcastSettingsViewModel.Factory::class)
 class PodcastSettingsViewModel @AssistedInject constructor(
     private val podcastManager: PodcastManager,
+    private val episodeManager: EpisodeManager,
     private val playlistManager: PlaylistManager,
     private val playbackManager: PlaybackManager,
     private val settings: Settings,
@@ -214,6 +216,39 @@ class PodcastSettingsViewModel @AssistedInject constructor(
             )
             podcastFlow.update { it?.copy(rawAutoArchiveEpisodeLimit = limit) }
             podcastManager.updateArchiveEpisodeLimit(podcastUuid, limit)
+        }
+    }
+
+    fun addAutoArchiveTitleFilter(filter: String) {
+        updateAutoArchiveTitleFilters { it + filter }
+    }
+
+    fun editAutoArchiveTitleFilter(index: Int, filter: String) {
+        updateAutoArchiveTitleFilters { filters ->
+            filters.mapIndexed { filterIndex, existing -> if (filterIndex == index) filter else existing }
+        }
+    }
+
+    fun removeAutoArchiveTitleFilter(index: Int) {
+        updateAutoArchiveTitleFilters { filters ->
+            filters.filterIndexed { filterIndex, _ -> filterIndex != index }
+        }
+    }
+
+    private fun updateAutoArchiveTitleFilters(transform: (List<String>) -> List<String>) {
+        viewModelScope.launch {
+            val filters = transform(podcastFlow.value?.autoArchiveTitleFilters.orEmpty())
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .distinct()
+            podcastFlow.update { it?.copy(autoArchiveTitleFilters = filters) }
+            podcastManager.updateArchiveTitleFilters(podcastUuid, filters)
+            // Apply the rule to episodes that are already in the library, not just to new ones.
+            withContext(Dispatchers.IO) {
+                podcastManager.findPodcastByUuid(podcastUuid)?.let { podcast ->
+                    episodeManager.checkPodcastForTitleFiltersBlocking(podcast, playbackManager)
+                }
+            }
         }
     }
 

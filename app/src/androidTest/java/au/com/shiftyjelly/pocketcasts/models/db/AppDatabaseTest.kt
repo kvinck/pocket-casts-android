@@ -27,6 +27,7 @@ class AppDatabaseTest {
         private const val TEST_DB = "migration-test"
         private const val MIGRATION_DB = "migration-test-132-133"
         private const val MIGRATION_DB_133_134 = "migration-test-133-134"
+        private const val MIGRATION_DB_135_136 = "migration-test-135-136"
     }
 
     @Rule @JvmField
@@ -181,6 +182,34 @@ class AppDatabaseTest {
         assertEquals(1, countRows(db, "episode_alternate_enclosures"))
     }
 
+    @Test
+    fun migrate135To136AddsAutoArchiveTitleFilterColumns() {
+        migrationTestHelper.createDatabase(MIGRATION_DB_135_136, 135).close()
+
+        val db = migrationTestHelper.runMigrationsAndValidate(MIGRATION_DB_135_136, 136, true, AppDatabase.MIGRATION_135_136)
+
+        val columns = mutableMapOf<String, Pair<Int, String?>>()
+        db.query("PRAGMA table_info(podcasts)").use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            val notNullIndex = cursor.getColumnIndex("notnull")
+            val defaultIndex = cursor.getColumnIndex("dflt_value")
+            while (cursor.moveToNext()) {
+                columns[cursor.getString(nameIndex)] = cursor.getInt(notNullIndex) to cursor.getString(defaultIndex)
+            }
+        }
+
+        assertEquals(
+            "Existing podcasts should be backfilled with an empty title filter list",
+            1 to "'[]'",
+            columns["auto_archive_title_filters"],
+        )
+        assertEquals(
+            "The modified date should be nullable with no default",
+            0 to null,
+            columns["auto_archive_title_filters_modified"],
+        )
+    }
+
     private fun countWhere(db: SupportSQLiteDatabase?, tableName: String, where: String): Int {
         return db?.query("SELECT count(*) FROM $tableName WHERE $where").use { cursor ->
             cursor?.let {
@@ -284,6 +313,7 @@ class AppDatabaseTest {
                 AppDatabase.MIGRATION_132_133,
                 AppDatabase.MIGRATION_133_134,
                 AppDatabase.MIGRATION_134_135,
+                AppDatabase.MIGRATION_135_136,
             )
             .build()
         // close the database and release any stream resources when the test finishes

@@ -505,6 +505,101 @@ class AutoArchiveTest {
     }
 
     @Test
+    fun testTitleFilterArchivesMatchingEpisodes() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), autoArchiveTitleFilters = listOf("It Could Happen Here Weekly"))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val matchingUuid = UUID.randomUUID().toString()
+        val otherUuid = UUID.randomUUID().toString()
+        val matchingEpisode = PodcastEpisode(title = "It Could Happen Here Weekly 132", uuid = matchingUuid, podcastUuid = podcast.uuid, isArchived = false, publishedDate = Date())
+        val otherEpisode = PodcastEpisode(title = "Part One: A Regular Episode", uuid = otherUuid, podcastUuid = podcast.uuid, isArchived = false, publishedDate = Date())
+
+        episodeDao.insertBlocking(matchingEpisode)
+        episodeDao.insertBlocking(otherEpisode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("Episode matching the title filter should be archived", episodeDao.findByUuid(matchingUuid)!!.isArchived)
+        assertTrue("Episode not matching the title filter should not be archived", !episodeDao.findByUuid(otherUuid)!!.isArchived)
+    }
+
+    @Test
+    fun testTitleFilterIgnoresCaseAndMatchesAnywhereInTitle() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), autoArchiveTitleFilters = listOf("it could happen here weekly"))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val uuid = UUID.randomUUID().toString()
+        val episode = PodcastEpisode(title = "Bonus: IT COULD HAPPEN HERE WEEKLY 132", uuid = uuid, podcastUuid = podcast.uuid, isArchived = false, publishedDate = Date())
+
+        episodeDao.insertBlocking(episode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("Title filter should match regardless of case or position", episodeDao.findByUuid(uuid)!!.isArchived)
+    }
+
+    @Test
+    fun testTitleFilterDoesNothingWhenEmpty() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), autoArchiveTitleFilters = listOf("   "))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val uuid = UUID.randomUUID().toString()
+        val episode = PodcastEpisode(title = "It Could Happen Here Weekly 132", uuid = uuid, podcastUuid = podcast.uuid, isArchived = false, publishedDate = Date())
+
+        episodeDao.insertBlocking(episode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("A blank title filter should not archive anything", !episodeDao.findByUuid(uuid)!!.isArchived)
+    }
+
+    @Test
+    fun testTitleFilterSkipsManuallyUnarchivedEpisodes() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), autoArchiveTitleFilters = listOf("It Could Happen Here Weekly"))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val uuid = UUID.randomUUID().toString()
+        // exclude_from_episode_limit is set when the user manually unarchives an episode
+        val episode = PodcastEpisode(title = "It Could Happen Here Weekly 132", uuid = uuid, podcastUuid = podcast.uuid, isArchived = false, excludeFromEpisodeLimit = true, publishedDate = Date())
+
+        episodeDao.insertBlocking(episode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("A manually unarchived episode should not be archived again", !episodeDao.findByUuid(uuid)!!.isArchived)
+    }
+
+    @Test
+    fun testTitleFilterRespectsStarredSetting() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, includeStarred = false, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), autoArchiveTitleFilters = listOf("It Could Happen Here Weekly"))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val uuid = UUID.randomUUID().toString()
+        val episode = PodcastEpisode(title = "It Could Happen Here Weekly 132", uuid = uuid, podcastUuid = podcast.uuid, isArchived = false, isStarred = true, publishedDate = Date())
+
+        episodeDao.insertBlocking(episode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("A starred episode should not be archived when starred episodes are excluded", !episodeDao.findByUuid(uuid)!!.isArchived)
+    }
+
+    @Test
+    fun testTitleFilterAppliesWithoutOverridingGlobalArchive() = runTest {
+        val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Never, testDispatcher = testDispatcher)
+        val podcast = Podcast(UUID.randomUUID().toString(), overrideGlobalArchive = false, autoArchiveTitleFilters = listOf("It Could Happen Here Weekly"))
+        val podcastManager = podcastManagerThatReturns(podcast)
+        val uuid = UUID.randomUUID().toString()
+        val episode = PodcastEpisode(title = "It Could Happen Here Weekly 132", uuid = uuid, podcastUuid = podcast.uuid, isArchived = false, publishedDate = Date())
+
+        episodeDao.insertBlocking(episode)
+
+        episodeManager.checkForEpisodesToAutoArchiveBlocking(null, podcastManager)
+
+        assertTrue("Title filters should not require the custom archive override", episodeDao.findByUuid(uuid)!!.isArchived)
+    }
+
+    @Test
     fun testAddingInactiveEpisodeToUpNext() = runTest {
         val episodeManager = episodeManagerFor(testDb, AutoArchiveAfterPlaying.Never, AutoArchiveInactive.Weeks1, includeStarred = true, testDispatcher = testDispatcher)
         val upNext = upNextQueueFor(testDb, episodeManager)

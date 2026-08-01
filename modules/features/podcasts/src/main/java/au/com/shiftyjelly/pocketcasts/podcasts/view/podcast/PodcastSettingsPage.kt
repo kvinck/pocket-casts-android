@@ -71,6 +71,9 @@ internal fun PodcastSettingsPage(
     onChangeAutoArchiveAfterPlayingSetting: () -> Unit,
     onChangeAutoArchiveAfterInactiveSetting: () -> Unit,
     onChangeAutoArchiveLimitSetting: () -> Unit,
+    onAddAutoArchiveTitleFilter: (String) -> Unit,
+    onEditAutoArchiveTitleFilter: (Int, String) -> Unit,
+    onRemoveAutoArchiveTitleFilter: (Int) -> Unit,
     onChangePlaybackEffects: (Boolean) -> Unit,
     onDecrementPlaybackSpeed: () -> Unit,
     onIncrementPlaybackSpeed: () -> Unit,
@@ -97,6 +100,7 @@ internal fun PodcastSettingsPage(
     val toolbarTitle = when (backStackEntry?.destination?.route) {
         PodcastSettingsRoutes.HOME, null -> podcastTitle
         PodcastSettingsRoutes.ARCHIVE -> stringResource(LR.string.podcast_settings_auto_archive)
+        PodcastSettingsRoutes.ARCHIVE_TITLE_FILTERS -> stringResource(LR.string.podcast_settings_auto_archive_title_filters)
         PodcastSettingsRoutes.EFFECTS -> stringResource(LR.string.podcast_playback_effects)
         PodcastSettingsRoutes.PLAYLISTS -> stringResource(LR.string.select_smart_playlists)
         else -> podcastTitle
@@ -188,6 +192,21 @@ internal fun PodcastSettingsPage(
                     onChangeAutoArchiveAfterPlayingSetting = onChangeAutoArchiveAfterPlayingSetting,
                     onChangeAutoArchiveAfterInactiveSetting = onChangeAutoArchiveAfterInactiveSetting,
                     onChangeAutoArchiveLimitSetting = onChangeAutoArchiveLimitSetting,
+                    onOpenTitleFiltersSetting = {
+                        navController.navigateOnce(PodcastSettingsRoutes.ARCHIVE_TITLE_FILTERS)
+                    },
+                )
+            }
+
+            composable(PodcastSettingsRoutes.ARCHIVE_TITLE_FILTERS) {
+                if (uiState == null) {
+                    return@composable
+                }
+                PodcastSettingsArchiveTitleFiltersPage(
+                    podcast = uiState.podcast,
+                    onAddTitleFilter = onAddAutoArchiveTitleFilter,
+                    onEditTitleFilter = onEditAutoArchiveTitleFilter,
+                    onRemoveTitleFilter = onRemoveAutoArchiveTitleFilter,
                 )
             }
 
@@ -268,6 +287,7 @@ private fun ChangeSkipDurationDialog(
 private object PodcastSettingsRoutes {
     const val HOME = "home"
     const val ARCHIVE = "archive"
+    const val ARCHIVE_TITLE_FILTERS = "archiveTitleFilters"
     const val EFFECTS = "effects"
     const val PLAYLISTS = "playlists"
 }

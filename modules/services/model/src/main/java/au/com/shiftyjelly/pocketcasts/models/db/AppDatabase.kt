@@ -34,6 +34,7 @@ import au.com.shiftyjelly.pocketcasts.models.converter.PodcastGroupingTypeConver
 import au.com.shiftyjelly.pocketcasts.models.converter.PodcastLicensingEnumConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.PodcastsSortTypeConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.SafeDateTypeConverter
+import au.com.shiftyjelly.pocketcasts.models.converter.StringListConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.SyncStatusConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.TrimModeTypeConverter
 import au.com.shiftyjelly.pocketcasts.models.converter.UserEpisodeServerStatusConverter
@@ -120,7 +121,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
         EpisodeChatMessage::class,
         EpisodeAlternateEnclosure::class,
     ],
-    version = 135,
+    version = 136,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 81, to = 82, spec = AppDatabase.Companion.DeleteSilenceRemovedMigration::class),
@@ -153,6 +154,7 @@ import au.com.shiftyjelly.pocketcasts.localization.R as LR
     InstantConverter::class,
     BlazeAdLocationConverter::class,
     AlternateEnclosureSourcesConverter::class,
+    StringListConverter::class,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun podcastDao(): PodcastDao
@@ -1503,6 +1505,11 @@ abstract class AppDatabase : RoomDatabase() {
             database.execSQL("CREATE INDEX IF NOT EXISTS `episode_published_date` ON `podcast_episodes` (`published_date`)")
         }
 
+        val MIGRATION_135_136 = addMigration(135, 136) { database ->
+            database.execSQL("ALTER TABLE podcasts ADD COLUMN auto_archive_title_filters TEXT NOT NULL DEFAULT '[]'")
+            database.execSQL("ALTER TABLE podcasts ADD COLUMN auto_archive_title_filters_modified INTEGER")
+        }
+
         fun addMigrations(databaseBuilder: Builder<AppDatabase>, context: Context) {
             databaseBuilder.addMigrations(
                 addMigration(1, 2) { },
@@ -1927,6 +1934,7 @@ abstract class AppDatabase : RoomDatabase() {
                 MIGRATION_132_133,
                 MIGRATION_133_134,
                 MIGRATION_134_135,
+                MIGRATION_135_136,
             )
         }
 

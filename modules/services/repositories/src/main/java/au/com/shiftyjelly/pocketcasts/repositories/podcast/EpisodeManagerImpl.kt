@@ -804,7 +804,33 @@ class EpisodeManagerImpl @Inject constructor(
             }
         }
 
+        checkPodcastForTitleFiltersBlocking(podcast, playbackManager)
+
         checkPodcastForEpisodeLimitBlocking(podcast, playbackManager)
+    }
+
+    override fun checkPodcastForTitleFiltersBlocking(podcast: Podcast, playbackManager: PlaybackManager?) {
+        val titleFilters = podcast.autoArchiveTitleFilters.filter(String::isNotBlank)
+        if (titleFilters.isEmpty()) {
+            return
+        }
+
+        val episodesToArchive = episodeDao.findByPodcastOrderPublishedDateDescBlocking(podcast.uuid)
+            // exclude_from_episode_limit is set when an episode is manually unarchived, so this
+            // stops us from archiving an episode the user has deliberately brought back.
+            .filter { !it.isArchived && !it.excludeFromEpisodeLimit }
+            .filter { settings.autoArchiveIncludesStarred.value || !it.isStarred }
+            .filter { playbackManager?.getCurrentEpisode()?.uuid != it.uuid }
+            .filter { episode -> titleFilters.any { episode.title.contains(it, ignoreCase = true) } }
+
+        if (episodesToArchive.isNotEmpty()) {
+            runBlocking {
+                archiveAllInList(episodesToArchive, playbackManager)
+            }
+            episodesToArchive.forEach {
+                LogBuffer.i(LogBuffer.TAG_BACKGROUND_TASKS, "Auto archiving episode matching title filter ${it.title}")
+            }
+        }
     }
 
     override fun checkPodcastForEpisodeLimitBlocking(podcast: Podcast, playbackManager: PlaybackManager?) {

@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,6 +41,7 @@ internal fun PodcastSettingsArchivePage(
     onChangeAutoArchiveAfterPlayingSetting: () -> Unit,
     onChangeAutoArchiveAfterInactiveSetting: () -> Unit,
     onChangeAutoArchiveLimitSetting: () -> Unit,
+    onOpenTitleFiltersSetting: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -47,9 +49,7 @@ internal fun PodcastSettingsArchivePage(
             .verticalScroll(rememberScrollState())
             .fillMaxSize(),
     ) {
-        SettingSection(
-            showDivider = podcast.overrideGlobalArchive,
-        ) {
+        SettingSection {
             SettingRow(
                 primaryText = stringResource(LR.string.podcast_settings_auto_archive_custom),
                 secondaryText = stringResource(LR.string.podcast_settings_auto_archive_custom_summary),
@@ -88,9 +88,7 @@ internal fun PodcastSettingsArchivePage(
                         text = stringResource(LR.string.settings_auto_archive_time_limits),
                     )
                 }
-                SettingSection(
-                    showDivider = false,
-                ) {
+                SettingSection {
                     val episodeLimit = rememberLastNotNull(podcast.autoArchiveEpisodeLimit, AutoArchiveLimit.None)
                     SettingRow(
                         primaryText = stringResource(LR.string.settings_auto_archive_episode_limit),
@@ -105,6 +103,26 @@ internal fun PodcastSettingsArchivePage(
                     )
                 }
             }
+        }
+        SettingSection(
+            showDivider = false,
+        ) {
+            val titleFilterCount = podcast.autoArchiveTitleFilters.size
+            SettingRow(
+                primaryText = stringResource(LR.string.podcast_settings_auto_archive_title_filters),
+                secondaryText = if (titleFilterCount == 0) {
+                    stringResource(LR.string.podcast_settings_auto_archive_title_filters_none)
+                } else {
+                    pluralStringResource(LR.plurals.podcast_settings_auto_archive_title_filters_count, titleFilterCount, titleFilterCount)
+                },
+                modifier = Modifier.clickable(
+                    role = Role.Button,
+                    onClick = onOpenTitleFiltersSetting,
+                ),
+            )
+            SettingInfoRow(
+                text = stringResource(LR.string.podcast_settings_auto_archive_title_filters_summary),
+            )
         }
     }
 }
@@ -133,6 +151,7 @@ private fun PodcastSettingsArchivePagePreview(
             onChangeAutoArchiveAfterPlayingSetting = {},
             onChangeAutoArchiveAfterInactiveSetting = {},
             onChangeAutoArchiveLimitSetting = {},
+            onOpenTitleFiltersSetting = {},
             modifier = Modifier.background(MaterialTheme.theme.colors.primaryUi02),
         )
     }
